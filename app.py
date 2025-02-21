@@ -4,8 +4,6 @@ from pydantic import BaseModel
 from typing import List, Optional
 from unsloth import FastLanguageModel
 import torch
-from transformers import TextIteratorStreamer
-from threading import Thread
 import re
 
 app = FastAPI()
@@ -45,16 +43,16 @@ model = FastLanguageModel.for_inference(model)
 
 def format_prompt(messages: List[Message]) -> str:
     formatted_messages = []
-    formatted_messages.append(r"###Context: ")
+    formatted_messages.append("### Context: ")
     for msg in messages:
         if msg.role == "system":
             formatted_messages.append(f"{msg.content}")
         elif msg.role == "user":
-            formatted_messages.append(r"\n\n### Human: " + msg.content)
+            formatted_messages.append(f" \n\n### Human: {msg.content}")
         elif msg.role == "assistant":
-            formatted_messages.append(r" \n\n### Assistant: " + msg.content)
+            formatted_messages.append(f" \n\n### Assistant: {msg.content}")
 
-    formatted_messages.append(r" \n\n### Assistant: ")
+    formatted_messages.append(" \n\n### Assistant: ")
     return "".join(formatted_messages)
 
 
@@ -75,29 +73,18 @@ async def generate(request: GenerateRequest):
         inputs = tokenizer(prompt, return_tensors="pt")
         inputs = {key: value.to(model.device) for key, value in inputs.items()}
         
-        # Setup streamer
-        streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
+        # Generate output
+        outputs = model.generate(
+            input_ids=inputs["input_ids"],
+            max_new_tokens=request.max_tokens,
+            do_sample=True,
+            temperature=request.temperature,
+            top_p=request.top_p
+        )
         
-        # Generate in separate thread
-        generated_text = ""
+        # Decode output
+        generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
         
-        def generate_thread():
-            model.generate(
-                input_ids=inputs["input_ids"],
-                streamer=streamer,
-                max_new_tokens=request.max_tokens,
-                do_sample=True,
-                temperature=request.temperature,
-                top_p=request.top_p
-            )
-            
-        thread = Thread(target=generate_thread)
-        thread.start()
-        
-        # Collect the generated text
-        for text in streamer:
-            generated_text += text
-            
         # Clean the response
         clean_text = clean_response(generated_text)
         
