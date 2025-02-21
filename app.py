@@ -67,6 +67,7 @@ async def generate(request: GenerateRequest):
     try:
         # Format the prompt
         prompt = format_prompt(request.messages)
+        print("prompt: ", prompt)
         
         # Tokenize and prepare inputs
         inputs = tokenizer(prompt, return_tensors="pt")
