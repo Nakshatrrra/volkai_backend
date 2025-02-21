@@ -66,14 +66,17 @@ def generate_response(prompt: str, max_new_tokens: int, temperature: float, top_
     )
     thread.start()
     
-    # Stream the response
+    # Stream the response, stopping at "<|endoftext|>"
+    response_text = ""
     for text in streamer:
+        if "<|endoftext|>" in text:
+            break
+        response_text += text
         yield text
 
 @app.post("/generate")
 async def generate_text(request: GenerationRequest):
     if request.stream:
-        # Return streaming response
         return StreamingResponse(
             generate_response(
                 request.prompt,
@@ -84,7 +87,6 @@ async def generate_text(request: GenerationRequest):
             media_type="text/event-stream"
         )
     else:
-        # Return complete response
         response_text = ""
         for text in generate_response(
             request.prompt,
@@ -93,7 +95,8 @@ async def generate_text(request: GenerationRequest):
             request.top_p
         ):
             response_text += text
-        return {"response": response_text}
+        return {"response": response_text.strip()}  # Ensure no trailing spaces
+
 
 @app.get("/health")
 async def health_check():
