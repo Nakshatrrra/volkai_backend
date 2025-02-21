@@ -36,7 +36,7 @@ dtype = None
 load_in_4bit = True
 
 model, tokenizer = FastLanguageModel.from_pretrained(
-    "mistral_120k_20feb_v2",
+    "nakshatra44/mistral_120k_20feb_v2",
     max_seq_length=max_seq_length,
     dtype=dtype,
     load_in_4bit=load_in_4bit,
