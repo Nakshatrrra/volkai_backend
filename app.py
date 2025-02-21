@@ -50,11 +50,11 @@ def format_prompt(messages: List[Message]) -> str:
         if msg.role == "system":
             formatted_messages.append(f"{msg.content}")
         elif msg.role == "user":
-            formatted_messages.append(r"\n\n###Human: " + msg.content)
+            formatted_messages.append(r"\n\n### Human: " + msg.content)
         elif msg.role == "assistant":
-            formatted_messages.append(r"\n\n### Assistant: " + msg.content)
+            formatted_messages.append(r" \n\n### Assistant: " + msg.content)
 
-    formatted_messages.append(r"\n\n### Assistant: ")
+    formatted_messages.append(r" \n\n### Assistant: ")
     return "".join(formatted_messages)
 
 
@@ -69,7 +69,7 @@ async def generate(request: GenerateRequest):
     try:
         # Format the prompt
         prompt = format_prompt(request.messages)
-        print("prompt: ", prompt)
+        print("prompt:", prompt)
         
         # Tokenize and prepare inputs
         inputs = tokenizer(prompt, return_tensors="pt")
