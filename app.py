@@ -46,13 +46,13 @@ def format_prompt(messages: List[Message]) -> str:
     formatted_messages.append("### Context: ")
     for msg in messages:
         if msg.role == "system":
-            formatted_messages.append(f"{msg.content}")
+            formatted_messages.append(f" {msg.content}")
         elif msg.role == "user":
-            formatted_messages.append(f" \n\n### Human: {msg.content}")
+            formatted_messages.append(r" \n\n### Human: " + msg.content)
         elif msg.role == "assistant":
-            formatted_messages.append(f" \n\n### Assistant: {msg.content}")
+            formatted_messages.append(r" \n\n### Assistant: " + msg.content)
 
-    formatted_messages.append(" \n\n### Assistant: ")
+    formatted_messages.append(r" \n\n### Assistant: ")
     return "".join(formatted_messages)
 
 
