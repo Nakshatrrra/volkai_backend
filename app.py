@@ -18,7 +18,7 @@ app.add_middleware(
 )
 
 # ✅ Load the model & tokenizer
-model_repo = "nakshatra44/mistral_incremental_30k_v2"
+model_repo = "nakshatra44/mistral_120k_20feb_v2"
 max_seq_length = 2048
 dtype = None
 load_in_4bit = True
