@@ -45,9 +45,10 @@ model = FastLanguageModel.for_inference(model)
 
 def format_prompt(messages: List[Message]) -> str:
     formatted_messages = []
+    formatted_messages.append(r"###Context: ")
     for msg in messages:
         if msg.role == "system":
-            formatted_messages.append(f" {msg.content}")
+            formatted_messages.append(f"{msg.content}")
         elif msg.role == "user":
             formatted_messages.append(r"\n\n###Human: " + msg.content)
         elif msg.role == "assistant":
