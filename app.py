@@ -47,14 +47,14 @@ def format_prompt(messages: List[Message]) -> str:
     formatted_messages = []
     for msg in messages:
         if msg.role == "system":
-            formatted_messages.append(f"### Context: \n\n{msg.content}")
+            formatted_messages.append(f"### Context: {msg.content}")
         elif msg.role == "user":
-            formatted_messages.append(f"Human: {msg.content}")
+            formatted_messages.append(f" ###Human: {msg.content}")
         elif msg.role == "assistant":
-            formatted_messages.append(f"Assistant: {msg.content}")
+            formatted_messages.append(f" ### Assistant: {msg.content}")
     
-    formatted_messages.append("### Assistant:")
-    return "\n\n".join(formatted_messages)
+    formatted_messages.append("### Assistant: ")
+    return "".join(formatted_messages)
 
 def clean_response(text: str) -> str:
     # Remove <|endoftext|> tokens and any extra whitespace
