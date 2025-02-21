@@ -1,5 +1,6 @@
 from fastapi import FastAPI, BackgroundTasks
 from pydantic import BaseModel
+from fastapi.middleware.cors import CORSMiddleware
 from typing import Iterator
 import torch
 from unsloth import FastLanguageModel
