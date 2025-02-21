@@ -56,11 +56,11 @@ def format_prompt(messages: List[Message]) -> str:
     return "".join(formatted_messages)
 
 
-def clean_response(text: str) -> str:
-    # Remove <|endoftext|> tokens and any extra whitespace
-    cleaned = re.sub(r'<\|endoftext\|>', '', text)
-    cleaned = cleaned.strip()
-    return cleaned
+# def clean_response(text: str) -> str:
+#     # Remove <|endoftext|> tokens and any extra whitespace
+#     cleaned = re.sub(r'<\|endoftext\|>', '', text)
+#     cleaned = cleaned.strip()
+#     return cleaned
 
 @app.post("/generate")
 async def generate(request: GenerateRequest):
@@ -86,9 +86,9 @@ async def generate(request: GenerateRequest):
         generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
         
         # Clean the response
-        clean_text = clean_response(generated_text)
+        # clean_text = clean_response(generated_text)
         
-        return {"generated_text": clean_text}
+        return {"generated_text": generated_text}
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
