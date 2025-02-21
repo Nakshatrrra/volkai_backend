@@ -37,8 +37,8 @@ model = FastLanguageModel.for_inference(model)
 class Request(BaseModel):
     prompt: str
     max_tokens: int = 100
-    temperature: float = 0.8
-    top_p: float = 0.95
+    temperature: float = 0.5
+    top_p: float = 0.8
 
 # ✅ Streaming Generator Function
 def generate_stream(prompt, max_tokens, temperature, top_p):
