@@ -31,9 +31,21 @@ class GenerationRequest(BaseModel):
     top_p: Optional[float] = 0.8
 
 async def generate_text_stream(prompt: str, max_tokens: int, temperature: float, top_p: float):
-    # Tokenize input
-    inputs = tokenizer(prompt, return_tensors="pt")
-    inputs = {key: value.to(model.device) for key, value in inputs.items()}
+    # Tokenize input with padding and attention mask
+    tokenizer_output = tokenizer(
+        prompt,
+        return_tensors="pt",
+        padding=True,
+        truncation=True,
+        max_length=MAX_SEQ_LENGTH,
+        return_attention_mask=True
+    )
+    
+    # Move everything to the model's device
+    inputs = {
+        "input_ids": tokenizer_output["input_ids"].to(model.device),
+        "attention_mask": tokenizer_output["attention_mask"].to(model.device)
+    }
     
     # Set up streamer
     streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
@@ -43,6 +55,7 @@ async def generate_text_stream(prompt: str, max_tokens: int, temperature: float,
         target=model.generate,
         kwargs={
             "input_ids": inputs["input_ids"],
+            "attention_mask": inputs["attention_mask"],
             "streamer": streamer,
             "max_new_tokens": max_tokens,
             "do_sample": True,
