@@ -1,56 +1,66 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from unsloth import FastLanguageModel
+from transformers import AutoTokenizer, TextIteratorStreamer
 import torch
+from threading import Thread
 
-# Define FastAPI app
+# ✅ Initialize FastAPI
 app = FastAPI()
 
-# Define request model
-class RequestBody(BaseModel):
-    prompt: str
-    max_tokens: int = 100
+# ✅ Enable CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  
+    allow_credentials=True,
+    allow_methods=["*"],  
+    allow_headers=["*"],  
+)
 
-# Load the fine-tuned model and tokenizer
+# ✅ Load the fine-tuned Mistral model
+model_repo = "nakshatra44/mistral_120k_20feb_v2"
 max_seq_length = 2048
-dtype = None
 load_in_4bit = True
 
-print("Loading model...")
-model, tokenizer = FastLanguageModel.from_pretrained(
-    "nakshatra44/mistral_120k_20feb_v2",  # Path to your fine-tuned model
+tokenizer = AutoTokenizer.from_pretrained(model_repo)
+model, _ = FastLanguageModel.from_pretrained(
+    model_repo,
     max_seq_length=max_seq_length,
-    dtype=dtype,
     load_in_4bit=load_in_4bit,
 )
 
 model = FastLanguageModel.for_inference(model)
-print("Model loaded successfully.")
 
+# ✅ Define request format
+class Request(BaseModel):
+    prompt: str
+    max_tokens: int = 100
+    temperature: float = 0.8
+    top_p: float = 0.95
+
+# ✅ Streaming Generator Function
+def generate_stream(prompt, max_tokens, temperature, top_p):
+    inputs = tokenizer(prompt, return_tensors="pt")
+    inputs = {key: value.to(model.device) for key, value in inputs.items()}
+    
+    streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
+    
+    thread = Thread(target=model.generate, kwargs={
+        "input_ids": inputs["input_ids"],
+        "streamer": streamer,
+        "max_new_tokens": max_tokens,
+        "do_sample": True,
+        "temperature": temperature,
+        "top_p": top_p,
+    })
+    thread.start()
+    
+    for text in streamer:
+        yield text
+
+# ✅ API Endpoint for Streaming Text Generation
 @app.post("/generate")
-def generate_response(request: RequestBody):
-    try:
-        # Tokenize input prompt
-        inputs = tokenizer(request.prompt, return_tensors="pt")
-        inputs = {key: value.to(model.device) for key, value in inputs.items()}
-
-        # Generate response
-        output_tokens = model.generate(
-            **inputs,
-            max_new_tokens=request.max_tokens,
-            do_sample=True,
-            temperature=0.5,
-            top_p=0.8,
-        )
-
-        # Decode generated tokens
-        output_text = tokenizer.decode(output_tokens[0], skip_special_tokens=True)
-
-        return {"response": output_text}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# Run the FastAPI server (use `uvicorn filename:app --reload` to start)
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+def generate_text(request: Request):
+    return StreamingResponse(generate_stream(request.prompt, request.max_tokens, request.temperature, request.top_p), media_type="text/plain")
