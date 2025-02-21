@@ -47,7 +47,7 @@ def format_prompt(messages: List[Message]) -> str:
     formatted_messages = []
     for msg in messages:
         if msg.role == "system":
-            formatted_messages.append(f"### Context: {msg.content}")
+            formatted_messages.append(f"### Context: You are VolkAI, a friendly AI assistant designed for Kairosoft AI Solutions Limited. {msg.content}")
         elif msg.role == "user":
             formatted_messages.append(f" ###Human: {msg.content}")
         elif msg.role == "assistant":
