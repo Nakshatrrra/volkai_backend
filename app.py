@@ -14,6 +14,15 @@ app = FastAPI(title="Mistral API")
 MAX_SEQ_LENGTH = 2048
 DTYPE = None  # Auto-detection
 LOAD_IN_4BIT = True
+
+# ✅ Enable CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  
+    allow_credentials=True,
+    allow_methods=["*"],  
+    allow_headers=["*"],  
+)
 MODEL_PATH = "nakshatra44/mistral_120k_20feb_v2"
 
 # Initialize model and tokenizer at startup
