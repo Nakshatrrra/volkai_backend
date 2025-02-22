@@ -154,18 +154,65 @@ async def generate_text(request: GenerationRequest):
     return {"response": response_text.strip()}  # Ensure no trailing spaces
 
 
+async def stream_tokens(streamer: TextIteratorStreamer) -> AsyncGenerator[str, None]:
+    """
+    Asynchronously stream tokens as they're generated.
+    """
+    try:
+        # Send initial connection message
+        yield "data: {\"type\": \"connected\"}\n\n"
+        
+        async def async_iterate():
+            for text in streamer:
+                if text:
+                    # Clean and format the token
+                    cleaned_text = text.replace("\n", " ")
+                    data = json.dumps({"type": "token", "content": cleaned_text})
+                    yield f"data: {data}\n\n"
+                    # Small delay to allow other tasks to run
+                    await asyncio.sleep(0)
+        
+        async for chunk in async_iterate():
+            yield chunk
+            
+        # Send completion message
+        yield "data: {\"type\": \"done\"}\n\n"
+    
+    except asyncio.CancelledError:
+        print("Stream cancelled by client")
+        raise
+    finally:
+        print("Stream completed")
+
 @app.post("/generate_stream")
 async def generate_text_stream(request: GenerationRequest):
     prompt = format_prompt(request.messages)
     print(f"Prompt: {prompt}")
 
+    # Prepare input tokens
+    inputs = tokenizer(prompt, return_tensors="pt")
+    inputs = {key: value.to(model.device) for key, value in inputs.items()}
+
+    # Initialize streamer
+    streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
+    
+    # Start generation in background thread immediately
+    thread = Thread(
+        target=model.generate,
+        kwargs={
+            "input_ids": inputs["input_ids"],
+            "streamer": streamer,
+            "max_new_tokens": request.max_tokens,
+            "do_sample": True,
+            "temperature": request.temperature,
+            "top_p": request.top_p
+        }
+    )
+    thread.start()
+
+    # Return streaming response immediately
     return StreamingResponse(
-        generate_response(
-            prompt, 
-            request.max_tokens, 
-            request.temperature, 
-            request.top_p
-        ),
+        stream_tokens(streamer),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
