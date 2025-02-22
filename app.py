@@ -24,10 +24,10 @@ app.add_middleware(
     allow_headers=["*"],  
 )
 
-MODEL_PATH = "nakshatra44/mistral_120k_20feb_v2"
+MODEL_PATH = "nakshatra44/mistral_21_2epoches_90k_v3"
 
 # Fixed context
-FIXED_CONTEXT = "### Context : You are VolkAI, a friendly AI assistant designed for Kairosoft AI Solutions Limited.\n\n"
+FIXED_CONTEXT = "### Context : You are VolkAI, a friendly AI assistant designed for Kairosoft AI Solutions Limited. \n\n" 
 
 # Initialize model and tokenizer at startup
 print("Loading model...")
@@ -99,26 +99,15 @@ async def generate_text(request: GenerationRequest):
     prompt = format_prompt(request.messages)
     print(f"Prompt: {prompt}")
     
-    if request.stream:
-        return StreamingResponse(
-            generate_response(
-                prompt,
-                request.max_tokens,
-                request.temperature,
-                request.top_p
-            ),
-            media_type="text/event-stream"
-        )
-    else:
-        response_text = ""
-        for text in generate_response(
-            prompt,
-            request.max_tokens,
-            request.temperature,
-            request.top_p
-        ):
-            response_text += text
-        return {"response": response_text.strip()}  # Ensure no trailing spaces
+    response_text = ""
+    for text in generate_response(
+        prompt,
+        request.max_tokens,
+        request.temperature,
+        request.top_p
+    ):
+        response_text += text
+    return {"response": response_text.strip()}  # Ensure no trailing spaces
 
 @app.post("/generate_stream")
 async def generate_text_stream(request: GenerationRequest):
