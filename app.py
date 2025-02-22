@@ -86,32 +86,13 @@ async def generate_response(prompt: str, max_new_tokens: int, temperature: float
     # Send initial SSE connection message
     yield "data: {\"type\": \"connected\"}\n\n"
 
-    buffer = ""
+    # Stream raw tokens directly
     for text in streamer:
-        # Add new text to buffer
-        buffer += text
-        
-        # Split buffer into words
-        words = buffer.split()
-        
-        # If we have words, emit all but the last one
-        if len(words) > 1:
-            for word in words[:-1]:
-                # Format as SSE event
-                data = json.dumps({"type": "token", "content": word + " "})
-                yield f"data: {data}\n\n"
-            
-            # Keep the last word in buffer (it might be incomplete)
-            buffer = words[-1]
-        
-    # Emit any remaining text in the buffer
-    if buffer:
-        data = json.dumps({"type": "token", "content": buffer})
+        data = json.dumps({"type": "token", "content": text})
         yield f"data: {data}\n\n"
     
     # Send completion message
     yield "data: {\"type\": \"done\"}\n\n"
-
 
 def generate_response_static(prompt: str, max_new_tokens: int, temperature: float, top_p: float) -> Iterator[str]:
     # Prepare input
