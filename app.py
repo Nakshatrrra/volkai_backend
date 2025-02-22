@@ -8,7 +8,6 @@ from transformers import TextIteratorStreamer
 from threading import Thread
 from fastapi.responses import StreamingResponse
 import json
-
 app = FastAPI(title="Mistral API")
 
 # Model configuration
@@ -65,7 +64,6 @@ def format_prompt(messages: List[Message]) -> str:
             prompt += f"### Assistant: {msg.content}\\n"
     prompt += "### Assistant:"  # Ensure assistant response starts
     return prompt
-
 async def generate_response(prompt: str, max_new_tokens: int, temperature: float, top_p: float):
     inputs = tokenizer(prompt, return_tensors="pt")
     inputs = {key: value.to(model.device) for key, value in inputs.items()}
@@ -85,6 +83,9 @@ async def generate_response(prompt: str, max_new_tokens: int, temperature: float
     )
     thread.start()
 
+    # Send initial SSE connection message
+    yield "data: {\"type\": \"connected\"}\n\n"
+
     buffer = ""
     for text in streamer:
         # Add new text to buffer
@@ -96,14 +97,21 @@ async def generate_response(prompt: str, max_new_tokens: int, temperature: float
         # If we have words, emit all but the last one
         if len(words) > 1:
             for word in words[:-1]:
-                yield json.dumps({"token": word + " "}) + "\n"
+                # Format as SSE event
+                data = json.dumps({"type": "token", "content": word + " "})
+                yield f"data: {data}\n\n"
             
             # Keep the last word in buffer (it might be incomplete)
             buffer = words[-1]
         
     # Emit any remaining text in the buffer
     if buffer:
-        yield json.dumps({"token": buffer}) + "\n"
+        data = json.dumps({"type": "token", "content": buffer})
+        yield f"data: {data}\n\n"
+    
+    # Send completion message
+    yield "data: {\"type\": \"done\"}\n\n"
+
 
 def generate_response_static(prompt: str, max_new_tokens: int, temperature: float, top_p: float) -> Iterator[str]:
     # Prepare input
@@ -163,9 +171,13 @@ async def generate_text_stream(request: GenerationRequest):
             request.temperature, 
             request.top_p
         ),
-        media_type="text/event-stream"
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Content-Type": "text/event-stream",
+        }
     )
-    
 
 if __name__ == "__main__":
     import uvicorn
