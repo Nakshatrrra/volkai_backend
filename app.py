@@ -64,6 +64,8 @@ def format_prompt(messages: List[Message]) -> str:
             prompt += f"### Assistant: {msg.content}\\n"
     prompt += "### Assistant:"  # Ensure assistant response starts
     return prompt
+
+    
 async def generate_response(prompt: str, max_new_tokens: int, temperature: float, top_p: float):
     inputs = tokenizer(prompt, return_tensors="pt")
     inputs = {key: value.to(model.device) for key, value in inputs.items()}
@@ -83,15 +85,17 @@ async def generate_response(prompt: str, max_new_tokens: int, temperature: float
     )
     thread.start()
 
-    # Send initial SSE connection message
     yield "data: {\"type\": \"connected\"}\n\n"
 
-    # Stream raw tokens directly
     for text in streamer:
-        data = json.dumps({"type": "token", "content": text})
-        yield f"data: {data}\n\n"
+        # Handle each token individually
+        if text:
+            # Ensure proper formatting of each token
+            data = json.dumps({"type": "token", "content": text.replace("\n", " ")})
+            yield f"data: {data}\n\n"
+            # Add a small flush to ensure tokens are sent individually
+            await asyncio.sleep(0.01)
     
-    # Send completion message
     yield "data: {\"type\": \"done\"}\n\n"
 
 def generate_response_static(prompt: str, max_new_tokens: int, temperature: float, top_p: float) -> Iterator[str]:
