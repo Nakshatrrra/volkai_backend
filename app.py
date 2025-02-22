@@ -28,7 +28,7 @@ MODEL_PATH = "nakshatra44/mistral_21_2epoches_90k_v3"
 
 # Fixed context
 # FIXED_CONTEXT = "### Context : You are VolkAI, a friendly AI assistant designed for Kairosoft AI Solutions Limited. \n\n" 
-FIXED_CONTEXT = "### Context :  \n\n" 
+FIXED_CONTEXT = "### Context :  \\n\\n" 
 
 # Initialize model and tokenizer at startup
 print("Loading model...")
@@ -139,7 +139,8 @@ async def generate_text(request: GenerationRequest):
 
 @app.post("/generate_stream")
 async def generate_text_stream(request: GenerationRequest):
-    prompt = format_prompt(request.messages)
+    # prompt = format_prompt(request.messages)
+    prompt = "### Context : \n\n### Human: aapka naam kya hai?\n### Assistant:"
     print(f"Streaming Prompt: {prompt}")
 
     async def token_stream():
