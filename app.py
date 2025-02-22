@@ -93,35 +93,19 @@ async def generate_response(prompt: str, max_new_tokens: int, temperature: float
         yield "data: {\"type\": \"connected\"}\n\n"
 
         # Process tokens as they come
-        while True:
-            try:
-                # Use asyncio.wait_for to handle timeouts
-                text = await asyncio.wait_for(
-                    asyncio.to_thread(next, iter(streamer)), 
-                    timeout=1.0
-                )
-                if text:
-                    data = json.dumps({"type": "token", "content": text.replace("\n", " ")})
-                    yield f"data: {data}\n\n"
-            except StopIteration:
-                break
-            except asyncio.TimeoutError:
-                continue
-            except Exception as e:
-                print(f"Error during streaming: {e}")
-                break
+        for text in streamer:
+            if text:
+                data = json.dumps({"type": "token", "content": text.replace("\n", " ")})
+                yield f"data: {data}\n\n"
 
         yield "data: {\"type\": \"done\"}\n\n"
     
     except asyncio.CancelledError:
-        # Handle client disconnection
         print("Client disconnected, cleaning up...")
-        # Optional: you could add cleanup code here if needed
         raise
     finally:
         # Ensure the thread is cleaned up
         if thread.is_alive():
-            # You might need to implement a way to stop the generation
             thread.join(timeout=0.5)
 
 def generate_response_static(prompt: str, max_new_tokens: int, temperature: float, top_p: float) -> Iterator[str]:
