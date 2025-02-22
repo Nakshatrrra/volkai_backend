@@ -24,7 +24,7 @@ app.add_middleware(
     allow_headers=["*"],  
 )
 
-MODEL_PATH = "nakshatra44/mistral_21_2epoches_90k_v3"
+MODEL_PATH = "nakshatra44/mistral_120k_20feb_v2"
 
 # Fixed context
 # FIXED_CONTEXT = "### Context : You are VolkAI, a friendly AI assistant designed for Kairosoft AI Solutions Limited. \n\n" 
