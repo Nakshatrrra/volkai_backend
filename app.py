@@ -27,7 +27,8 @@ app.add_middleware(
 MODEL_PATH = "nakshatra44/mistral_21_2epoches_90k_v3"
 
 # Fixed context
-FIXED_CONTEXT = "### Context : You are VolkAI, a friendly AI assistant designed for Kairosoft AI Solutions Limited. \n\n" 
+# FIXED_CONTEXT = "### Context : You are VolkAI, a friendly AI assistant designed for Kairosoft AI Solutions Limited. \n\n" 
+FIXED_CONTEXT = "### Context :  \n\n" 
 
 # Initialize model and tokenizer at startup
 print("Loading model...")
@@ -55,12 +56,12 @@ def format_prompt(messages: List[Message]) -> str:
     """
     Formats messages in the expected format with the fixed context.
     """
-    prompt = FIXED_CONTEXT
+    prompt = ""
     for msg in messages:
         if msg.role == "user":
-            prompt += f"### Human: {msg.content}\n"
+            prompt += f"### Human: {msg.content}\\n"
         elif msg.role == "assistant":
-            prompt += f"### Assistant: {msg.content}\n"
+            prompt += f"### Assistant: {msg.content}\\n"
     prompt += "### Assistant: "  # Ensure assistant response starts
     return prompt
 
