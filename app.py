@@ -27,8 +27,8 @@ app.add_middleware(
 MODEL_PATH = "nakshatra44/mistral_120k_20feb_v2"
 
 # Fixed context
-# FIXED_CONTEXT = "### Context : You are VolkAI, a friendly AI assistant designed for Kairosoft AI Solutions Limited. \n\n" 
-FIXED_CONTEXT = "### Context : \\n\\n" 
+FIXED_CONTEXT = "### Context : You are VolkAI, a friendly AI assistant designed for Kairosoft AI Solutions Limited. \n\n" 
+# FIXED_CONTEXT = "### Context : \\n\\n" 
 
 # Initialize model and tokenizer at startup
 print("Loading model...")
