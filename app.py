@@ -24,10 +24,10 @@ app.add_middleware(
     allow_headers=["*"],  
 )
 
-MODEL_PATH = "nakshatra44/mistral_21_2epoches_90k_v3"
+MODEL_PATH = "nakshatra44/mistral_120k_20feb_v2"
 
 # Fixed context
-# FIXED_CONTEXT = "### Context :  .\n\n" 
+FIXED_CONTEXT = "### Context : You are VolkAI, a friendly AI assistant designed for Kairosoft AI Solutions Limited.\n\n"
 
 # Initialize model and tokenizer at startup
 print("Loading model...")
@@ -55,13 +55,12 @@ def format_prompt(messages: List[Message]) -> str:
     """
     Formats messages in the expected format with the fixed context.
     """
-    # prompt = FIXED_CONTEXT
-    prompt = ""
+    prompt = FIXED_CONTEXT
     for msg in messages:
         if msg.role == "user":
-            prompt += f"### Human: {msg.content} "
+            prompt += f"### Human: {msg.content}\n"
         elif msg.role == "assistant":
-            prompt += f"### Assistant: {msg.content} "
+            prompt += f"### Assistant: {msg.content}\n"
     prompt += "### Assistant: "  # Ensure assistant response starts
     return prompt
 
@@ -88,9 +87,11 @@ def generate_response(prompt: str, max_new_tokens: int, temperature: float, top_
     thread.start()
     
     # Stream the response, stopping at "<|endoftext|>"
+    response_text = ""
     for text in streamer:
         if "<|endoftext|>" in text:
             break
+        response_text += text
         yield text
 
 @app.post("/generate")
@@ -98,30 +99,26 @@ async def generate_text(request: GenerationRequest):
     prompt = format_prompt(request.messages)
     print(f"Prompt: {prompt}")
     
-    response_text = ""
-    for text in generate_response(
-        prompt,
-        request.max_tokens,
-        request.temperature,
-        request.top_p
-    ):
-        response_text += text
-    return {"response": response_text.strip()}  # Ensure no trailing spaces
-
-@app.post("/generate_stream")
-async def generate_text_stream(request: GenerationRequest):
-    prompt = format_prompt(request.messages)
-    print(f"Streaming Prompt: {prompt}")
-    
-    return StreamingResponse(
-        generate_response(
+    if request.stream:
+        return StreamingResponse(
+            generate_response(
+                prompt,
+                request.max_tokens,
+                request.temperature,
+                request.top_p
+            ),
+            media_type="text/event-stream"
+        )
+    else:
+        response_text = ""
+        for text in generate_response(
             prompt,
             request.max_tokens,
             request.temperature,
             request.top_p
-        ),
-        media_type="text/event-stream"
-    )
+        ):
+            response_text += text
+        return {"response": response_text.strip()}  # Ensure no trailing spaces
 
 @app.get("/health")
 async def health_check():
