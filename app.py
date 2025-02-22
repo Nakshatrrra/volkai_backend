@@ -64,15 +64,13 @@ def format_prompt(messages: List[Message]) -> str:
     prompt += "### Assistant: "  # Ensure assistant response starts
     return prompt
 
-def generate_response(prompt: str, max_new_tokens: int, temperature: float, top_p: float) -> Iterator[str]:
-    # Prepare input
+async def generate_response(prompt: str, max_new_tokens: int, temperature: float, top_p: float):
     inputs = tokenizer(prompt, return_tensors="pt")
     inputs = {key: value.to(model.device) for key, value in inputs.items()}
-    
-    # Setup streamer
+
     streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
     
-    # Generate in separate thread
+    # Start the generation in a separate thread
     thread = Thread(
         target=model.generate,
         kwargs={
@@ -85,15 +83,12 @@ def generate_response(prompt: str, max_new_tokens: int, temperature: float, top_
         }
     )
     thread.start()
-    
-    # Stream the response, stopping at "<|endoftext|>"
-    response_text = ""
+
+    # Stream each token as it arrives
     for text in streamer:
-        print(f"Streamed token: {text}") 
-        if "<|endoftext|>" in text:
-            break
-        response_text += text
-        yield text
+        print(f"Streamed token: {text}", flush=True)  # Ensure immediate logging
+        yield text  # Send token immediately
+
 
 @app.post("/generate")
 async def generate_text(request: GenerationRequest):
@@ -114,16 +109,13 @@ async def generate_text(request: GenerationRequest):
 async def generate_text_stream(request: GenerationRequest):
     prompt = format_prompt(request.messages)
     print(f"Streaming Prompt: {prompt}")
-    
-    return StreamingResponse(
-        generate_response(
-            prompt,
-            request.max_tokens,
-            request.temperature,
-            request.top_p
-        ),
-        media_type="text/event-stream"
-    )
+
+    async def token_stream():
+        async for token in generate_response(prompt, request.max_tokens, request.temperature, request.top_p):
+            yield token  # Yield each token as it comes
+
+    return StreamingResponse(token_stream(), media_type="text/event-stream")
+
 
 @app.get("/health")
 async def health_check():
