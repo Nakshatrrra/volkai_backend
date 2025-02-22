@@ -87,7 +87,7 @@ async def generate_response(prompt: str, max_new_tokens: int, temperature: float
 
     # Stream each token as it arrives
     for text in streamer:
-        print(f"Streamed token: {text}", flush=True)  # Ensure immediate logging
+        # print(f"Streamed token: {text}", flush=True)  # Ensure immediate logging
         yield text  # Send token immediately
 
 
