@@ -90,13 +90,44 @@ async def generate_response(prompt: str, max_new_tokens: int, temperature: float
         yield text  # Send token immediately
 
 
+
+def generate_response_static(prompt: str, max_new_tokens: int, temperature: float, top_p: float) -> Iterator[str]:
+    # Prepare input
+    inputs = tokenizer(prompt, return_tensors="pt")
+    inputs = {key: value.to(model.device) for key, value in inputs.items()}
+    
+    # Setup streamer
+    streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
+    
+    # Generate in separate thread
+    thread = Thread(
+        target=model.generate,
+        kwargs={
+            "input_ids": inputs["input_ids"],
+            "streamer": streamer,
+            "max_new_tokens": max_new_tokens,
+            "do_sample": True,
+            "temperature": temperature,
+            "top_p": top_p
+        }
+    )
+    thread.start()
+    
+    # Stream the response, stopping at "<|endoftext|>"
+    response_text = ""
+    for text in streamer:
+        if "<|endoftext|>" in text:
+            break
+        response_text += text
+        yield text
+
 @app.post("/generate")
 async def generate_text(request: GenerationRequest):
     prompt = format_prompt(request.messages)
     print(f"Prompt: {prompt}")
     
     response_text = ""
-    for text in generate_response(
+    for text in generate_response_static(
         prompt,
         request.max_tokens,
         request.temperature,
