@@ -89,6 +89,7 @@ def generate_response(prompt: str, max_new_tokens: int, temperature: float, top_
     # Stream the response, stopping at "<|endoftext|>"
     response_text = ""
     for text in streamer:
+        print(f"Streamed token: {text}") 
         if "<|endoftext|>" in text:
             break
         response_text += text
