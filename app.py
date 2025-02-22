@@ -140,7 +140,7 @@ async def generate_text(request: GenerationRequest):
 @app.post("/generate_stream")
 async def generate_text_stream(request: GenerationRequest):
     # prompt = format_prompt(request.messages)
-    prompt = "### Context : \n\n### Human: aapka naam kya hai?\n### Assistant:"
+    prompt = "### Context : You are VolkAI, a friendly AI assistant designed for Kairosoft AI Solutions Limited. \n\n### Human: Who are you?\n### Assistant:"
     print(f"Streaming Prompt: {prompt}")
 
     async def token_stream():
