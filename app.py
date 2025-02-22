@@ -28,7 +28,7 @@ MODEL_PATH = "nakshatra44/mistral_21_2epoches_90k_v3"
 
 # Fixed context
 # FIXED_CONTEXT = "### Context : You are VolkAI, a friendly AI assistant designed for Kairosoft AI Solutions Limited. \n\n" 
-FIXED_CONTEXT = "### Context : You are VolkAI, a friendly AI assistant designed for Kairosoft AI Solutions Limited. \\n\\n" 
+FIXED_CONTEXT = "### Context : \\n\\n" 
 
 # Initialize model and tokenizer at startup
 print("Loading model...")
