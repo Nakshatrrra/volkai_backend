@@ -30,7 +30,7 @@ app.add_middleware(
 MODEL_PATH = "nakshatra44/mistral_120k_20feb_v2"
 
 # Fixed context
-FIXED_CONTEXT = "### Context : You are VolkAI, a friendly AI assistant designed for Kairosoft AI Solutions Limited. \n\n" 
+FIXED_CONTEXT = "### Context : You are VolkAI, a friendly AI assistant designed for Kairosoft AI Solutions Limited. \\n\\n" 
 # FIXED_CONTEXT = "### Context : \\n\\n" 
 
 # Initialize model and tokenizer at startup
@@ -91,6 +91,8 @@ async def generate_response(prompt: str, max_new_tokens: int, temperature: float
 
     try:
         yield "data: {\"type\": \"connected\"}\n\n"
+        response_text = ""
+        stop_phrases = ["### Assistant", "<|endoftext|>", "### Human", "### Context"]
 
         # Process tokens as they come
         for text in streamer:
@@ -156,47 +158,40 @@ async def generate_text(request: GenerationRequest):
 
 async def stream_tokens(streamer: TextIteratorStreamer) -> AsyncGenerator[str, None]:
     """
-    Asynchronously stream tokens as they're generated.
+    Streams tokens as they are generated.
     """
-    try:
-        # Send initial connection message
-        yield "data: {\"type\": \"connected\"}\n\n"
-        
-        async def async_iterate():
-            for text in streamer:
-                if text:
-                    # Clean and format the token
-                    cleaned_text = text.replace("\n", " ")
-                    data = json.dumps({"type": "token", "content": cleaned_text})
-                    yield f"data: {data}\n\n"
-                    # Small delay to allow other tasks to run
-                    await asyncio.sleep(0)
-        
-        async for chunk in async_iterate():
-            yield chunk
-            
-        # Send completion message
-        yield "data: {\"type\": \"done\"}\n\n"
-    
-    except asyncio.CancelledError:
-        print("Stream cancelled by client")
-        raise
-    finally:
-        print("Stream completed")
+    yield "data: {\"type\": \"connected\"}\n\n"  # Notify client that streaming started
+
+    for text in streamer:  # Directly iterate over streamer
+        if text.strip():  # Avoid empty tokens
+            cleaned_text = text.replace("\n", " ")
+            data = json.dumps({"type": "token", "content": cleaned_text})
+            yield f"data: {data}\n\n"
+
+        await asyncio.sleep(0)  # Allow event loop to process other tasks
+
+    yield "data: {\"type\": \"done\"}\n\n"
+
+
+async def async_streamer(streamer: TextIteratorStreamer) -> AsyncGenerator[str, None]:
+    """
+    Asynchronous wrapper for TextIteratorStreamer.
+    """
+    for text in iter(streamer.__iter__, None):  # Yield tokens as they appear
+        yield text
+
 
 @app.post("/generate_stream")
 async def generate_text_stream(request: GenerationRequest):
     prompt = format_prompt(request.messages)
     print(f"Prompt: {prompt}")
 
-    # Prepare input tokens
     inputs = tokenizer(prompt, return_tensors="pt")
     inputs = {key: value.to(model.device) for key, value in inputs.items()}
 
-    # Initialize streamer
     streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
-    
-    # Start generation in background thread immediately
+
+    # ✅ Start model generation in a background thread
     thread = Thread(
         target=model.generate,
         kwargs={
@@ -206,20 +201,23 @@ async def generate_text_stream(request: GenerationRequest):
             "do_sample": True,
             "temperature": request.temperature,
             "top_p": request.top_p
-        }
+        },
+        daemon=True
     )
     thread.start()
 
-    # Return streaming response immediately
-    return StreamingResponse(
-        stream_tokens(streamer),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "Content-Type": "text/event-stream",
-        }
-    )
+    async def token_generator():
+        yield "data: {\"type\": \"connected\"}\n\n"  # Notify client that streaming started
+
+        for text in streamer:  # This will yield tokens as soon as they are generated
+            if text.strip():
+                data = json.dumps({"type": "token", "content": text.replace("\n", " ")})
+                yield f"data: {data}\n\n"
+                print("token: ",data)
+        
+        yield "data: {\"type\": \"done\"}\n\n"
+
+    return StreamingResponse(token_generator(), media_type="text/event-stream")
 
 if __name__ == "__main__":
     import uvicorn
