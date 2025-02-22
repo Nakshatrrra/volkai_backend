@@ -68,48 +68,6 @@ def format_prompt(messages: List[Message]) -> str:
     prompt += "### Assistant:"  # Ensure assistant response starts
     return prompt
 
-    
-async def generate_response(prompt: str, max_new_tokens: int, temperature: float, top_p: float):
-    inputs = tokenizer(prompt, return_tensors="pt")
-    inputs = {key: value.to(model.device) for key, value in inputs.items()}
-
-    streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
-    
-    # Start generation in a separate thread
-    thread = Thread(
-        target=model.generate,
-        kwargs={
-            "input_ids": inputs["input_ids"],
-            "streamer": streamer,
-            "max_new_tokens": max_new_tokens,
-            "do_sample": True,
-            "temperature": temperature,
-            "top_p": top_p
-        }
-    )
-    thread.start()
-
-    try:
-        yield "data: {\"type\": \"connected\"}\n\n"
-        response_text = ""
-        stop_phrases = ["### Assistant", "<|endoftext|>", "### Human", "### Context"]
-
-        # Process tokens as they come
-        for text in streamer:
-            if text:
-                data = json.dumps({"type": "token", "content": text.replace("\n", " ")})
-                yield f"data: {data}\n\n"
-
-        yield "data: {\"type\": \"done\"}\n\n"
-    
-    except asyncio.CancelledError:
-        print("Client disconnected, cleaning up...")
-        raise
-    finally:
-        # Ensure the thread is cleaned up
-        if thread.is_alive():
-            thread.join(timeout=0.5)
-
 def generate_response_static(prompt: str, max_new_tokens: int, temperature: float, top_p: float) -> Iterator[str]:
     # Prepare input
     inputs = tokenizer(prompt, return_tensors="pt")
@@ -154,32 +112,6 @@ async def generate_text(request: GenerationRequest):
     ):
         response_text += text
     return {"response": response_text.strip()}  # Ensure no trailing spaces
-
-
-async def stream_tokens(streamer: TextIteratorStreamer) -> AsyncGenerator[str, None]:
-    """
-    Streams tokens as they are generated.
-    """
-    yield "data: {\"type\": \"connected\"}\n\n"  # Notify client that streaming started
-
-    for text in streamer:  # Directly iterate over streamer
-        if text.strip():  # Avoid empty tokens
-            cleaned_text = text.replace("\n", " ")
-            data = json.dumps({"type": "token", "content": cleaned_text})
-            yield f"data: {data}\n\n"
-
-        await asyncio.sleep(0)  # Allow event loop to process other tasks
-
-    yield "data: {\"type\": \"done\"}\n\n"
-
-
-async def async_streamer(streamer: TextIteratorStreamer) -> AsyncGenerator[str, None]:
-    """
-    Asynchronous wrapper for TextIteratorStreamer.
-    """
-    for text in iter(streamer.__iter__, None):  # Yield tokens as they appear
-        yield text
-
 
 @app.post("/generate_stream")
 async def generate_text_stream(request: GenerationRequest):
