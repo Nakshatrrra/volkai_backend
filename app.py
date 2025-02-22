@@ -120,6 +120,21 @@ async def generate_text(request: GenerationRequest):
             response_text += text
         return {"response": response_text.strip()}  # Ensure no trailing spaces
 
+@app.post("/generate_stream")
+async def generate_text_stream(request: GenerationRequest):
+    prompt = format_prompt(request.messages)
+    print(f"Streaming Prompt: {prompt}")
+    
+    return StreamingResponse(
+        generate_response(
+            prompt,
+            request.max_tokens,
+            request.temperature,
+            request.top_p
+        ),
+        media_type="text/event-stream"
+    )
+
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "model": MODEL_PATH}
