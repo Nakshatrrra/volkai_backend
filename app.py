@@ -1,13 +1,15 @@
 from fastapi import FastAPI, BackgroundTasks
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Iterator, List, Dict
+from typing import Iterator, List, Dict, AsyncGenerator
 import torch
 from unsloth import FastLanguageModel
 from transformers import TextIteratorStreamer
 from threading import Thread
 from fastapi.responses import StreamingResponse
 import json
+import asyncio
+
 app = FastAPI(title="Mistral API")
 
 # Model configuration
@@ -72,30 +74,39 @@ async def generate_response(prompt: str, max_new_tokens: int, temperature: float
 
     streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
     
-    thread = Thread(
-        target=model.generate,
-        kwargs={
-            "input_ids": inputs["input_ids"],
-            "streamer": streamer,
-            "max_new_tokens": max_new_tokens,
-            "do_sample": True,
-            "temperature": temperature,
-            "top_p": top_p
-        }
-    )
+    generation_kwargs = {
+        "input_ids": inputs["input_ids"],
+        "streamer": streamer,
+        "max_new_tokens": max_new_tokens,
+        "do_sample": True,
+        "temperature": temperature,
+        "top_p": top_p
+    }
+
+    # Start generation in a separate thread
+    thread = Thread(target=model.generate, kwargs=generation_kwargs)
     thread.start()
 
+    # Send initial connection message
     yield "data: {\"type\": \"connected\"}\n\n"
 
-    for text in streamer:
-        # Handle each token individually
+    # Stream tokens as they're generated
+    accumulated_text = ""
+    async for text in streamer:
         if text:
-            # Ensure proper formatting of each token
-            data = json.dumps({"type": "token", "content": text.replace("\n", " ")})
+            # Clean and format the token
+            cleaned_text = text.replace("\n", " ")
+            accumulated_text += cleaned_text
+            
+            # Send the token immediately
+            data = json.dumps({
+                "type": "token",
+                "content": cleaned_text,
+                "accumulated": accumulated_text
+            })
             yield f"data: {data}\n\n"
-            # Add a small flush to ensure tokens are sent individually
-            await asyncio.sleep(0.01)
-    
+
+    # Send completion message
     yield "data: {\"type\": \"done\"}\n\n"
 
 def generate_response_static(prompt: str, max_new_tokens: int, temperature: float, top_p: float) -> Iterator[str]:
