@@ -7,6 +7,7 @@ from unsloth import FastLanguageModel
 from transformers import TextIteratorStreamer
 from threading import Thread
 from fastapi.responses import StreamingResponse
+import json
 
 app = FastAPI(title="Mistral API")
 
@@ -71,7 +72,6 @@ async def generate_response(prompt: str, max_new_tokens: int, temperature: float
 
     streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
     
-    # Start the generation in a separate thread
     thread = Thread(
         target=model.generate,
         kwargs={
@@ -85,12 +85,25 @@ async def generate_response(prompt: str, max_new_tokens: int, temperature: float
     )
     thread.start()
 
-    # Stream each token as it arrives
+    buffer = ""
     for text in streamer:
-        # print(f"Streamed token: {text}", flush=True)  # Ensure immediate logging
-        yield text  # Send token immediately
-
-
+        # Add new text to buffer
+        buffer += text
+        
+        # Split buffer into words
+        words = buffer.split()
+        
+        # If we have words, emit all but the last one
+        if len(words) > 1:
+            for word in words[:-1]:
+                yield json.dumps({"token": word + " "}) + "\n"
+            
+            # Keep the last word in buffer (it might be incomplete)
+            buffer = words[-1]
+        
+    # Emit any remaining text in the buffer
+    if buffer:
+        yield json.dumps({"token": buffer}) + "\n"
 
 def generate_response_static(prompt: str, max_new_tokens: int, temperature: float, top_p: float) -> Iterator[str]:
     # Prepare input
@@ -137,21 +150,22 @@ async def generate_text(request: GenerationRequest):
         response_text += text
     return {"response": response_text.strip()}  # Ensure no trailing spaces
 
+
 @app.post("/generate_stream")
 async def generate_text_stream(request: GenerationRequest):
     prompt = format_prompt(request.messages)
     print(f"Prompt: {prompt}")
 
-    async def token_stream():
-        async for token in generate_response(prompt, request.max_tokens, request.temperature, request.top_p):
-            yield token  # Yield each token as it comes
-
-    return StreamingResponse(token_stream(), media_type="text/event-stream")
-
-
-@app.get("/health")
-async def health_check():
-    return {"status": "healthy", "model": MODEL_PATH}
+    return StreamingResponse(
+        generate_response(
+            prompt, 
+            request.max_tokens, 
+            request.temperature, 
+            request.top_p
+        ),
+        media_type="text/event-stream"
+    )
+    
 
 if __name__ == "__main__":
     import uvicorn
