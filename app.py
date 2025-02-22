@@ -74,39 +74,29 @@ async def generate_response(prompt: str, max_new_tokens: int, temperature: float
 
     streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
     
-    generation_kwargs = {
-        "input_ids": inputs["input_ids"],
-        "streamer": streamer,
-        "max_new_tokens": max_new_tokens,
-        "do_sample": True,
-        "temperature": temperature,
-        "top_p": top_p
-    }
-
     # Start generation in a separate thread
-    thread = Thread(target=model.generate, kwargs=generation_kwargs)
+    thread = Thread(
+        target=model.generate,
+        kwargs={
+            "input_ids": inputs["input_ids"],
+            "streamer": streamer,
+            "max_new_tokens": max_new_tokens,
+            "do_sample": True,
+            "temperature": temperature,
+            "top_p": top_p
+        }
+    )
     thread.start()
 
-    # Send initial connection message
     yield "data: {\"type\": \"connected\"}\n\n"
 
-    # Stream tokens as they're generated
-    accumulated_text = ""
+    # Use async iterator to process tokens as they come
     async for text in streamer:
         if text:
-            # Clean and format the token
-            cleaned_text = text.replace("\n", " ")
-            accumulated_text += cleaned_text
-            
-            # Send the token immediately
-            data = json.dumps({
-                "type": "token",
-                "content": cleaned_text,
-                "accumulated": accumulated_text
-            })
+            # Send token immediately without any delay
+            data = json.dumps({"type": "token", "content": text.replace("\n", " ")})
             yield f"data: {data}\n\n"
-
-    # Send completion message
+    
     yield "data: {\"type\": \"done\"}\n\n"
 
 def generate_response_static(prompt: str, max_new_tokens: int, temperature: float, top_p: float) -> Iterator[str]:
