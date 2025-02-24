@@ -9,10 +9,19 @@ from threading import Thread
 from fastapi.responses import StreamingResponse
 import json
 import asyncio
+from pymongo import MongoClient
+import re
 from contextlib import asynccontextmanager
 import queue
+from fastapi import HTTPException
 
 app = FastAPI(title="Mistral API")
+
+# MongoDB Connection
+MONGO_URI = "mongodb+srv://naksh:naksh@cluster0.3d7ly.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
+client = MongoClient(MONGO_URI)
+db = client.volkai_database
+collection = db.entity_info
 
 # Model configuration remains the same
 MAX_SEQ_LENGTH = 2048
@@ -28,7 +37,7 @@ app.add_middleware(
 )
 
 MODEL_PATH = "nakshatra44/mistral_120k_20feb_v2"
-FIXED_CONTEXT = "### Context : You are VolkAI, a friendly AI assistant designed for Kairosoft AI Solutions Limited. \n\n"
+FIXED_CONTEXT = "### Context : You are VolkAI, a friendly AI assistant designed for Kairosoft AI Solutions Limited. "
 
 # Initialize model and tokenizer
 print("Loading model...")
@@ -51,9 +60,43 @@ class GenerationRequest(BaseModel):
     temperature: float = 0.5
     top_p: float = 0.8
     stream: bool = False
+    
+def get_entity_info(prompt: str) -> str:
+    prompt_lower = prompt.lower()
+    
+    entities = ["ceo", "md", "coo", "cfo", "cto"]  # Add more entities as needed
+    matching_info = []
+    
+    try:
+        for entity in entities:
+            if entity in prompt_lower:
+                result = collection.find_one({
+                    "entity": entity,
+                    "company": "Kairosoft"
+                })
+                print("result: ",result)
+                
+                if result and 'info' in result:
+                    matching_info.append(result['info'])
+        print("check1: ",matching_info)h
+        # Join all matching information with a space
+        return " ".join(matching_info) if matching_info else ""
+        
+    except Exception as e:
+        print(f"Error querying MongoDB: {str(e)}")
+        return ""
 
 def format_prompt(messages: List[Message]) -> str:
     prompt = FIXED_CONTEXT
+    temp_prompt = ""
+    for msg in messages:
+        if msg.role == "user":
+            temp_prompt += f"### Human: {msg.content}"
+    additional_context = get_entity_info(temp_prompt)
+    if additional_context:
+        prompt += f" {additional_context}\n\n"
+    else:
+        prompt += "\n\n"
     for msg in messages:
         if msg.role == "user":
             prompt += f"### Human: {msg.content}\n"
@@ -75,7 +118,7 @@ async def async_generate(
             tokenizer,
             skip_prompt=True,
             skip_special_tokens=True,
-            timeout=1.0  # Add timeout to prevent blocking
+            timeout=5.0  # Add timeout to prevent blocking
         )
         
         # Start generation in a separate thread
