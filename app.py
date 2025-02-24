@@ -78,7 +78,7 @@ def get_entity_info(prompt: str) -> str:
                 
                 if result and 'info' in result:
                     matching_info.append(result['info'])
-        print("check1: ",matching_info)h
+        print("check1: ",matching_info)
         # Join all matching information with a space
         return " ".join(matching_info) if matching_info else ""
         
