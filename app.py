@@ -10,30 +10,27 @@ from fastapi.responses import StreamingResponse
 import json
 import asyncio
 from contextlib import asynccontextmanager
+import queue
 
 app = FastAPI(title="Mistral API")
 
-# Model configuration
+# Model configuration remains the same
 MAX_SEQ_LENGTH = 2048
-DTYPE = None  # Auto-detection
+DTYPE = None
 LOAD_IN_4BIT = True
 
-# ✅ Enable CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],  
-    allow_headers=["*"],  
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 MODEL_PATH = "nakshatra44/mistral_120k_20feb_v2"
+FIXED_CONTEXT = "### Context : You are VolkAI, a friendly AI assistant designed for Kairosoft AI Solutions Limited. \n\n"
 
-# Fixed context
-FIXED_CONTEXT = "### Context : You are VolkAI, a friendly AI assistant designed for Kairosoft AI Solutions Limited. \\n\\n" 
-# FIXED_CONTEXT = "### Context : \\n\\n" 
-
-# Initialize model and tokenizer at startup
+# Initialize model and tokenizer
 print("Loading model...")
 model, tokenizer = FastLanguageModel.from_pretrained(
     MODEL_PATH,
@@ -56,30 +53,33 @@ class GenerationRequest(BaseModel):
     stream: bool = False
 
 def format_prompt(messages: List[Message]) -> str:
-    """
-    Formats messages in the expected format with the fixed context.
-    """
     prompt = FIXED_CONTEXT
     for msg in messages:
         if msg.role == "user":
-            prompt += f"### Human: {msg.content}\\n"
+            prompt += f"### Human: {msg.content}\n"
         elif msg.role == "assistant":
-            prompt += f"### Assistant: {msg.content}\\n"
-    prompt += "### Assistant:"  # Ensure assistant response starts
+            prompt += f"### Assistant: {msg.content}\n"
+    prompt += "### Assistant:"
     return prompt
 
-def generate_response_static(prompt: str, max_new_tokens: int, temperature: float, top_p: float) -> Iterator[str]:
-    # Prepare input
-    inputs = tokenizer(prompt, return_tensors="pt")
-    inputs = {key: value.to(model.device) for key, value in inputs.items()}
-    
-    # Setup streamer
-    streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
-    
-    # Generate in separate thread
-    thread = Thread(
-        target=model.generate,
-        kwargs={
+async def async_generate(
+    inputs: dict,
+    max_new_tokens: int,
+    temperature: float,
+    top_p: float,
+    queue: asyncio.Queue
+):
+    try:
+        # Create streamer with a small timeout
+        streamer = TextIteratorStreamer(
+            tokenizer,
+            skip_prompt=True,
+            skip_special_tokens=True,
+            timeout=1.0  # Add timeout to prevent blocking
+        )
+        
+        # Start generation in a separate thread
+        generation_kwargs = {
             "input_ids": inputs["input_ids"],
             "streamer": streamer,
             "max_new_tokens": max_new_tokens,
@@ -87,70 +87,86 @@ def generate_response_static(prompt: str, max_new_tokens: int, temperature: floa
             "temperature": temperature,
             "top_p": top_p
         }
-    )
-    thread.start()
-    
-    # Stream the response, stopping at "<|endoftext|>"
-    response_text = ""
-    for text in streamer:
-        if "<|endoftext|>" in text:
-            break
-        response_text += text
-        yield text
-
-@app.post("/generate")
-async def generate_text(request: GenerationRequest):
-    prompt = format_prompt(request.messages)
-    print(f"Prompt: {prompt}")
-    
-    response_text = ""
-    for text in generate_response_static(
-        prompt,
-        request.max_tokens,
-        request.temperature,
-        request.top_p
-    ):
-        response_text += text
-    return {"response": response_text.strip()}  # Ensure no trailing spaces
+        
+        thread = Thread(target=model.generate, kwargs=generation_kwargs)
+        thread.start()
+        
+        # Process tokens as they arrive
+        for text in streamer:
+            if "<|endoftext|>" in text:
+                break
+            if text.strip():  # Only process non-empty tokens
+                await queue.put(text)
+        
+        # Signal completion
+        await queue.put(None)
+        
+    except Exception as e:
+        print(f"Generation error: {str(e)}")
+        await queue.put(None)
 
 @app.post("/generate_stream")
 async def generate_text_stream(request: GenerationRequest):
     prompt = format_prompt(request.messages)
     print(f"Prompt: {prompt}")
 
+    # Prepare inputs
     inputs = tokenizer(prompt, return_tensors="pt")
     inputs = {key: value.to(model.device) for key, value in inputs.items()}
 
-    streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
+    # Create queue for async communication
+    token_queue = asyncio.Queue()
 
-    # ✅ Start model generation in a background thread
-    thread = Thread(
-        target=model.generate,
-        kwargs={
-            "input_ids": inputs["input_ids"],
-            "streamer": streamer,
-            "max_new_tokens": request.max_tokens,
-            "do_sample": True,
-            "temperature": request.temperature,
-            "top_p": request.top_p
-        },
-        daemon=True
+    # Start generation in background
+    asyncio.create_task(async_generate(
+        inputs,
+        request.max_tokens,
+        request.temperature,
+        request.top_p,
+        token_queue
+    ))
+
+    async def event_generator():
+        try:
+            # Send initial connection message
+            yield "data: {\"type\": \"connected\"}\n\n"
+
+            while True:
+                # Wait for next token with timeout
+                try:
+                    token = await asyncio.wait_for(token_queue.get(), timeout=10.0)
+                    if token is None:  # Generation complete
+                        break
+                    
+                    # Send token
+                    data = json.dumps({
+                        "type": "token",
+                        "content": token.replace("\n", " ")
+                    })
+                    yield f"data: {data}\n\n"
+                    
+                except asyncio.TimeoutError:
+                    print("Token generation timeout")
+                    break
+
+            # Send completion message
+            yield "data: {\"type\": \"done\"}\n\n"
+            
+        except Exception as e:
+            print(f"Streaming error: {str(e)}")
+            # Send error message to client
+            error_data = json.dumps({
+                "type": "error",
+                "content": "An error occurred during generation"
+            })
+            yield f"data: {error_data}\n\n"
+
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        }
     )
-    thread.start()
-
-    async def token_generator():
-        yield "data: {\"type\": \"connected\"}\n\n"  # Notify client that streaming started
-
-        for text in streamer:  # This will yield tokens as soon as they are generated
-            if text.strip():
-                data = json.dumps({"type": "token", "content": text.replace("\n", " ")})
-                yield f"data: {data}\n\n"
-                print("token: ",data)
-        
-        yield "data: {\"type\": \"done\"}\n\n"
-
-    return StreamingResponse(token_generator(), media_type="text/event-stream")
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
