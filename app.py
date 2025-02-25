@@ -138,7 +138,7 @@ async def async_generate(
         for text in streamer:
             if "<|endoftext|>" in text:
                 break
-            if text.strip():  # Only process non-empty tokens
+            if text:  # Only process non-empty tokens
                 await queue.put(text)
         
         # Signal completion
@@ -184,7 +184,7 @@ async def generate_text_stream(request: GenerationRequest):
                     # Send token
                     data = json.dumps({
                         "type": "token",
-                        "content": token.replace("\n", " ")
+                        "content": token
                     })
                     yield f"data: {data}\n\n"
                     
