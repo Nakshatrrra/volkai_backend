@@ -142,8 +142,8 @@ async def async_generate(
         # Process tokens as they arrive
         async def process_stream():
             for text in streamer:
-                if "<|endoftext|>" in text:
-                    break
+                # if "<|endoftext|>" in text:
+                #     break
                 if text:  # Only process non-empty tokens
                     print(text, end="", flush=True)
                     await queue.put(text)
