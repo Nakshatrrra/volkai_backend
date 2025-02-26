@@ -14,6 +14,7 @@ import re
 from contextlib import asynccontextmanager
 import queue
 from fastapi import HTTPException
+from starlette.background import BackgroundTask
 
 app = FastAPI(title="Mistral API")
 
@@ -36,7 +37,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-MODEL_PATH = "nakshatra44/mistral_120k_20feb_v2"
+MODEL_PATH = "nakshatra44/mistral_25feb_code_incremental"
 FIXED_CONTEXT = "### Context : You are VolkAI, a friendly AI assistant designed for Kairosoft AI Solutions Limited. "
 
 # Initialize model and tokenizer
@@ -118,7 +119,7 @@ async def async_generate(
             tokenizer,
             skip_prompt=True,
             skip_special_tokens=True,
-            timeout=5.0  # Add timeout to prevent blocking
+            timeout=10.0  # Add timeout to prevent blocking
         )
         
         # Start generation in a separate thread
@@ -131,21 +132,30 @@ async def async_generate(
             "top_p": top_p
         }
         
-        thread = Thread(target=model.generate, kwargs=generation_kwargs)
+        thread = Thread(target=model.generate, kwargs=generation_kwargs, daemon=True)
         thread.start()
         
-        # Process tokens as they arrive
-        for text in streamer:
-            if "<|endoftext|>" in text:
-                break
-            if text:  # Only process non-empty tokens
-                await queue.put(text)
+        # print("\nGenerated Response:")
+        # for text in streamer:
+        #     print(text, end="", flush=True)
         
-        # Signal completion
-        await queue.put(None)
+        # Process tokens as they arrive
+        async def process_stream():
+            for text in streamer:
+                if "<|endoftext|>" in text:
+                    break
+                if text:  # Only process non-empty tokens
+                    print(text, end="", flush=True)
+                    await queue.put(text)
+                    await asyncio.sleep(0)
+        
+            # Signal completion
+            await queue.put(None)
+        await process_stream()
         
     except Exception as e:
         print(f"Generation error: {str(e)}")
+        traceback.print_exc()
         await queue.put(None)
 
 @app.post("/generate_stream")
@@ -171,8 +181,8 @@ async def generate_text_stream(request: GenerationRequest):
 
     async def event_generator():
         try:
-            # Send initial connection message
-            yield "data: {\"type\": \"connected\"}\n\n"
+            yield "data: {\"type\": \"connected\"}\n\n"  
+            await asyncio.sleep(0.01)
 
             while True:
                 # Wait for next token with timeout
@@ -187,6 +197,7 @@ async def generate_text_stream(request: GenerationRequest):
                         "content": token
                     })
                     yield f"data: {data}\n\n"
+                    await asyncio.sleep(0.01) 
                     
                 except asyncio.TimeoutError:
                     print("Token generation timeout")
@@ -211,5 +222,6 @@ async def generate_text_stream(request: GenerationRequest):
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Prevents Nginx buffering if you're using it
         }
     )
